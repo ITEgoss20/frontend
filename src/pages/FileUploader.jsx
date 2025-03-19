@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import WhatsAppModal from "../component/WhatsAppModal.jsx";
 
 const FileUploader = () => {
   const [file, setFile] = useState(null);
@@ -6,6 +7,8 @@ const FileUploader = () => {
   const [loading, setLoading] = useState(false);
   const [newInsertedRecords, setNewInsertedRecords] = useState([]);
   const [missingExcelRecords, setMissingExcelRecords] = useState([]);
+  const [isModalOpen, setModalOpen] = useState(false); // Set true to see it on load
+  const [whatsAppData, setWhatsAppData] = useState({});
 
   useEffect(() => {
     const storedRecords = JSON.parse(localStorage.getItem("newRecords")) || [];
@@ -31,10 +34,8 @@ const FileUploader = () => {
 
     const formData = new FormData();
     formData.append("file", file);
-
     setLoading(true);
     setMessage("");
-
     try {
       const response = await fetch(
         "https://backend-jtl6.onrender.com/api/upload-and-compare",
@@ -44,7 +45,7 @@ const FileUploader = () => {
         }
       );
       const result = await response.json();
-
+      //
       if (response.ok) {
         setMessage(
           `File uploaded successfully! ${result.recordsInserted} records inserted.`
@@ -55,7 +56,6 @@ const FileUploader = () => {
           JSON.parse(localStorage.getItem("newRecords")) || [];
         const existingMissingRecords =
           JSON.parse(localStorage.getItem("missingRecords")) || [];
-
         // Merge new records, ensuring uniqueness
         const updatedNewRecords = [
           ...new Map(
@@ -65,7 +65,6 @@ const FileUploader = () => {
             ])
           ).values(),
         ];
-
         const updatedMissingRecords = [
           ...new Map(
             [...existingMissingRecords, ...result.missingRecords].map(
@@ -73,7 +72,15 @@ const FileUploader = () => {
             )
           ).values(),
         ];
-
+        setWhatsAppData({
+          recordsInserted: result.recordsInserted,
+          insertedRecords: result.insertedRecords,
+          missingRecordsCount: result.missingRecordsCount,
+          missingRecords: result.missingRecords,
+          message: `📊 *Stock Update Report* 📊\n\n✅ Inserted: ${result.recordsInserted}\n❌ Missing: ${result.missingRecordsCount}\n\nThank you!`,
+          whatsappLink: result.whatsappLink,
+        });
+        setModalOpen(true);
         // Update state & store in localStorage
         setNewInsertedRecords(updatedNewRecords);
         setMissingExcelRecords(updatedMissingRecords);
@@ -82,11 +89,6 @@ const FileUploader = () => {
           "missingRecords",
           JSON.stringify(updatedMissingRecords)
         );
-
-        // **Open WhatsApp link if available**
-        if (result.whatsappLink) {
-          window.location.href = result.whatsappLink; // Open WhatsApp chat
-        }
       } else {
         throw new Error(result.message || "Upload failed");
       }
@@ -100,7 +102,6 @@ const FileUploader = () => {
   const handleRemoveFile = () => {
     setFile(null);
     setMessage(""); // Clear message when removing file
-
     // Reset the file input field to ensure change detection
     document.getElementById("file").value = "";
   };
@@ -156,7 +157,11 @@ const FileUploader = () => {
           </p>
         )}
       </div>
-
+      <WhatsAppModal
+        isModalOpen={isModalOpen}
+        whatsAppData={whatsAppData}
+        setModalOpen={setModalOpen}
+      />
       {/* Table for sr and scan_code */}
       <div className="lg:flex lg:justify-center w-full lg:space-x-8">
         <div className="lg:w-[30%]">
