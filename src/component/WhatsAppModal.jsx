@@ -6,26 +6,23 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
   if (!isModalOpen) return null;
 
   // Device detection for WhatsApp App vs Web
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const isMobile =
+    /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    );
 
   const handleWhatsAppRedirect = () => {
-    // Priority to backend-provided WhatsApp link
-    if (whatsAppData?.whatsappLink) {
-      window.open(whatsAppData.whatsappLink, "_blank");
-      return;
-    }
-
     // Fallback link generation
-    const phone = "919359748376"; // Change to dynamic phone if needed
+    const phone = "918850513009";
     const message = encodeURIComponent(
       whatsAppData?.message || "No message received from backend."
     );
 
-    const link = isMobile
-      ? `whatsapp://send?phone=${phone}&text=${message}`
-      : `https://web.whatsapp.com/send?phone=${phone}&text=${message}`;
-
-    window.open(link, "_blank");
+    if (isMobile) {
+      window.open(`whatsapp://send?phone=${phone}&text=${message}`, "_blank");
+    } else {
+      window.open(whatsAppData?.whatsappLink, "_blank");
+    }
   };
 
   return (
@@ -39,7 +36,10 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
         {/* Modal Header */}
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">📨 WhatsApp Message Preview</h2>
-          <button onClick={() => setModalOpen(false)}>
+          <button
+            className="cursor-pointer"
+            onClick={() => setModalOpen(false)}
+          >
             <X className="w-6 h-6 text-gray-600" />
           </button>
         </div>
@@ -90,7 +90,7 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
         {/* ✅ WhatsApp Button */}
         <button
           onClick={handleWhatsAppRedirect}
-          className="mt-6 w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition"
+          className="mt-6 cursor-pointer w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition"
         >
           Open in WhatsApp
         </button>
