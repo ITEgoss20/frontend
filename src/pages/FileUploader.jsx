@@ -120,7 +120,7 @@ const FileUploader = () => {
       if (error.name === "AbortError") {
         // console.log("File upload was canceled.");
       } else {
-        setMessage(error.message)
+        setMessage(error.message);
       }
     } finally {
       setLoading(false);

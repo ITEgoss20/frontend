@@ -14,7 +14,7 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
   const handleWhatsAppRedirect = () => {
     // Fallback link generation
     const phone = "918850513009";
-    const message = encodeURIComponent(
+    const message = decodeURIComponent(
       whatsAppData?.message || "No message received from backend."
     );
 
