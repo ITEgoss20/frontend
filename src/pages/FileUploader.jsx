@@ -134,6 +134,7 @@ const FileUploader = () => {
     }
     setFile(null);
     setLoading(false);
+    setMessage("");
     document.getElementById("file").value = ""; // Reset file input
   };
   return (
