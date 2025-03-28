@@ -74,7 +74,7 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
         {whatsAppData?.missingRecords?.length > 0 && (
           <div className="mb-4">
             <p className="font-semibold mb-1">Missing Records (Scan Codes):</p>
-            <div className="bg-red-50 p-3 rounded text-sm max-h-40 overflow-y-auto">
+            <div className="bg-red-50 p-3 rounded text-sm max-h-28 overflow-y-auto">
               {whatsAppData.missingRecords.map((rec, index) => (
                 <p key={index}>⚠️ {rec.scan_code}</p>
               ))}
@@ -83,8 +83,8 @@ const WhatsAppModal = ({ isModalOpen, setModalOpen, whatsAppData }) => {
         )}
 
         {/* ✅ WhatsApp Message Content */}
-        <div className="bg-gray-100 p-4 rounded text-sm whitespace-pre-wrap">
-          {whatsAppData?.message}
+        <div className="bg-gray-100 p-4 rounded text-sm whitespace-pre-wrap h-40 overflow-y-auto">
+          {decodeURIComponent(whatsAppData?.message)}
         </div>
 
         {/* ✅ WhatsApp Button */}

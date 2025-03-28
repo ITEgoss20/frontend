@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import WhatsAppModal from "../component/WhatsAppModal.jsx";
+import {
+  deleteTable,
+  clearCatche,
+  formatDateToIST,
+  formatWhatsAppMessage,
+  downloadInsertedRecords,
+} from "../services.js";
 
 const FileUploader = () => {
   const [file, setFile] = useState(null);
@@ -9,13 +16,39 @@ const FileUploader = () => {
   const [missingExcelRecords, setMissingExcelRecords] = useState([]);
   const [isModalOpen, setModalOpen] = useState(false); // Set true to see it on load
   const [whatsAppData, setWhatsAppData] = useState({});
+  const [lastInserted, setLasInserted] = useState({});
+  const [abortController, setAbortController] = useState(null); // Store AbortController
 
-  useEffect(() => {
-    const storedRecords = JSON.parse(localStorage.getItem("newRecords")) || [];
-    setNewInsertedRecords(storedRecords);
+  const getRecordsFromLocal = () => {
+    const newRecords = JSON.parse(localStorage.getItem("newRecords")) || [];
     const missingExcelRecords =
       JSON.parse(localStorage.getItem("missingRecords")) || [];
+    return { newRecords, missingExcelRecords };
+  };
+
+  useEffect(() => {
+    const storedRecords = getRecordsFromLocal().newRecords;
+    setNewInsertedRecords(storedRecords);
+    const missingExcelRecords = getRecordsFromLocal().missingExcelRecords;
     setMissingExcelRecords(missingExcelRecords);
+  }, []);
+
+  const fetchLatest = async () => {
+    try {
+      const response = await fetch(
+        "https://backend-jtl6.onrender.com/api/get-last-record",
+        {
+          method: "GET",
+        }
+      );
+      setLasInserted(await response.json());
+    } catch (error) {
+      console.log("Error fetching record:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchLatest();
   }, []);
 
   const handleFileChange = (event) => {
@@ -25,93 +58,93 @@ const FileUploader = () => {
       setMessage("");
     }
   };
-
   const handleUpload = async () => {
     if (!file) {
       setMessage("Please select a file first.");
       return;
     }
-
     const formData = new FormData();
     formData.append("file", file);
     setLoading(true);
     setMessage("");
+
+    // Create a new AbortController instance for this request
+    const controller = new AbortController();
+    setAbortController(controller);
+
     try {
       const response = await fetch(
         "https://backend-jtl6.onrender.com/api/upload-and-compare",
         {
           method: "POST",
           body: formData,
+          signal: controller.signal,
         }
       );
       const result = await response.json();
-      //
       if (response.ok) {
-        setMessage(
-          `File uploaded successfully! ${result.recordsInserted} records inserted.`
-        );
-
-        // Fetch existing records from localStorage
-        const existingNewRecords =
-          JSON.parse(localStorage.getItem("newRecords")) || [];
-        const existingMissingRecords =
-          JSON.parse(localStorage.getItem("missingRecords")) || [];
-        // Merge new records, ensuring uniqueness
-        const updatedNewRecords = [
-          ...new Map(
-            [...existingNewRecords, ...result.insertedRecords].map((item) => [
-              item.scan_code,
-              item,
-            ])
-          ).values(),
-        ];
-        const updatedMissingRecords = [
-          ...new Map(
-            [...existingMissingRecords, ...result.missingRecords].map(
-              (item) => [item.scan_code, item]
-            )
-          ).values(),
-        ];
-        setWhatsAppData({
+        setMessage(`File uploaded successfully!`);
+        const whatsappMessage = {
           recordsInserted: result.recordsInserted,
           insertedRecords: result.insertedRecords,
           missingRecordsCount: result.missingRecordsCount,
           missingRecords: result.missingRecords,
-          message: `📊 *Stock Update Report* 📊\n\n✅ Inserted: ${result.recordsInserted}\n❌ Missing: ${result.missingRecordsCount}\n\nThank you!`,
+          message: formatWhatsAppMessage(
+            result.insertedRecords,
+            result.missingRecords
+          ),
+          // message: `📊 *Stock Update Report* 📊\n\n✅ Inserted: ${result.recordsInserted}\n❌ Missing: ${result.missingRecordsCount}\n\nThank you!`,
           whatsappLink: result.whatsappLink,
-        });
+        };
+        setWhatsAppData(whatsappMessage);
         setModalOpen(true);
-        // Update state & store in localStorage
-        setNewInsertedRecords(updatedNewRecords);
-        setMissingExcelRecords(updatedMissingRecords);
-        localStorage.setItem("newRecords", JSON.stringify(updatedNewRecords));
+        setNewInsertedRecords(result.insertedRecords);
+        setMissingExcelRecords(result.missingRecords);
+        localStorage.setItem(
+          "whatsAppModelData",
+          JSON.stringify(whatsappMessage)
+        );
+        localStorage.setItem(
+          "newRecords",
+          JSON.stringify(result.insertedRecords)
+        );
         localStorage.setItem(
           "missingRecords",
-          JSON.stringify(updatedMissingRecords)
+          JSON.stringify(result.missingRecords)
         );
+        handleRemoveFile();
       } else {
         throw new Error(result.message || "Upload failed");
       }
     } catch (error) {
-      setMessage(error.message);
+      if (error.name === "AbortError") {
+        // console.log("File upload was canceled.");
+      } else {
+        setMessage(error.message)
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleRemoveFile = () => {
+    if (abortController) {
+      abortController.abort(); // Cancel the fetch request
+      setAbortController(null); // Reset the controller
+    }
     setFile(null);
-    setMessage(""); // Clear message when removing file
-    // Reset the file input field to ensure change detection
-    document.getElementById("file").value = "";
+    setLoading(false);
+    document.getElementById("file").value = ""; // Reset file input
   };
-
   return (
     <>
-      <h1 className="text-3xl font-bold mb-4">File Uploader</h1>
-      <p className="text-lg mb-6">Upload your file here</p>
-      <div className="bg-white relative p-6 rounded-lg shadow-lg text-black h-52 w-80 flex flex-col items-center">
-        <div className="mt-8 w-full">
+      <h1 className="text-3xl font-bold mt-6">File Uploader</h1>
+      <p className="text-lg mb-2">Upload your file here</p>
+      <div className="bg-white relative p-6 rounded-lg shadow-lg text-black h-56 w-80 flex flex-col items-center">
+        {lastInserted.created_at && (
+          <p>{formatDateToIST(lastInserted.created_at)}</p>
+        )}
+        <div className="mt-4 w-full">
           <input
             id="file"
             type="file"
@@ -149,13 +182,46 @@ const FileUploader = () => {
         </button>
         {message && (
           <p
-            className={`mt-4 text-sm text-justify ${
+            className={`mt-0.5 text-center text-sm ${
               message.includes("success") ? "text-green-600" : "text-red-600"
             }`}
           >
             {message}
           </p>
         )}
+        <div className="absolute space-x-2 flex items-center text-xs bottom-1 right-1">
+          <button
+            onClick={deleteTable}
+            className="cursor-pointer p-1 bg-red-600 text-white rounded-sm"
+          >
+            Delete Table
+          </button>
+          {(missingExcelRecords.length > 0 ||
+            newInsertedRecords.length > 0) && (
+            <>
+              <button
+                onClick={() =>
+                  clearCatche(setNewInsertedRecords, setMissingExcelRecords)
+                }
+                className="cursor-pointer p-1 bg-red-600 text-white rounded-sm"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  const whatsappMessage =
+                    JSON.parse(localStorage.getItem("whatsAppModelData")) || [];
+                  if (!whatsAppData) return;
+                  setWhatsAppData(whatsappMessage);
+                  setModalOpen(true);
+                }}
+                className="cursor-pointer p-1 bg-green-600 text-white rounded-sm"
+              >
+                Send to WhatsApp
+              </button>
+            </>
+          )}
+        </div>
       </div>
       <WhatsAppModal
         isModalOpen={isModalOpen}
@@ -163,64 +229,85 @@ const FileUploader = () => {
         setModalOpen={setModalOpen}
       />
       {/* Table for sr and scan_code */}
-      <div className="lg:flex lg:justify-center w-full lg:space-x-8">
-        <div className="lg:w-[30%]">
-          {newInsertedRecords.length > 0 && (
-            <div className="mt-6">
-              <h2 className="text-xl font-bold mb-3 text-center">
-                Newly Stock (In)
+      <div className="sm:flex justify-center w-full sm:space-x-12">
+        <div className="sm:w-[50%] lg:w-[30%]">
+          <div className="mt-6 relative">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-bold mb-3 ">
+                {newInsertedRecords.length} Newly Stock (In)
               </h2>
-              <table className="min-w-full bg-white border text-black border-gray-300 shadow-md">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="py-2 px-4 border">Sr</th>
-                    <th className="py-2 px-4 border">Scan Code</th>
+              {getRecordsFromLocal().newRecords.length > 0 && (
+                <button
+                  onClick={() => downloadInsertedRecords(newInsertedRecords)}
+                  className="text-xs cursor-pointer p-2 bg-blue-800 rounded-lg"
+                >
+                  Download
+                </button>
+              )}
+            </div>
+
+            <div className="h-44 overflow-y-auto border bg-gray-100 shadow-md w-full">
+              <table className="min-w-full border text-black relative text-xs h-40">
+                <thead className="sticky top-0">
+                  <tr className="bg-black text-white">
+                    <th className="py-2 px-4">Sr</th>
+                    <th className="py-2 px-4">Scan Code</th>
+                    {/* <th className="py-2 px-4">Date & Time (In)</th> */}
                   </tr>
                 </thead>
                 <tbody>
-                  {newInsertedRecords.map((record, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="py-2 px-4 border text-black">
-                        {record.sr}
-                      </td>
-                      <td className="py-2 px-4 border text-black">
-                        {record.scan_code}
-                      </td>
-                    </tr>
-                  ))}
+                  {newInsertedRecords.length > 0 &&
+                    newInsertedRecords.map((record, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="py-2 px-4 border text-black">
+                          {record.sr}
+                        </td>
+                        <td className="py-2 px-4 border text-black">
+                          {record.scan_code}
+                        </td>
+                        {/* <td className="py-2 px-4 border text-black">
+                          {formatDateToIST(record.created_at)}
+                        </td> */}
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
         </div>
-        <div className="lg:w-[30%]">
-          {missingExcelRecords.length > 0 && (
-            <div className="mt-6">
-              <h2 className="text-xl font-bold mb-3 text-center">
-                Stock Sold (Out)
-              </h2>
-              <table className="min-w-full bg-white border text-black border-gray-300 shadow-md">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="py-2 px-4 border">Sr</th>
-                    <th className="py-2 px-4 border">Scan Code</th>
+        <div className=" sm:w-[50%] lg:w-[30%]">
+          <div className="mt-6">
+            <h2 className="text-xl font-bold mb-3 text-center">
+              {missingExcelRecords.length} Stock Sold (Out)
+            </h2>
+            <div className="h-44 overflow-y-auto border bg-gray-100 shadow-md w-full">
+              <table className="min-w-full text-black relative  text-xs">
+                <thead className="sticky top-0">
+                  <tr className="bg-black text-white">
+                    <th className="py-2 px-4">Sr</th>
+                    <th className="py-2 px-4">Scan Code</th>
+                    {/* <th className="py-2 px-4">Date & Time (Out)</th> */}
                   </tr>
                 </thead>
                 <tbody>
-                  {missingExcelRecords.map((record, index) => (
-                    <tr key={index} className="border-t">
-                      <td className="py-2 px-4 border text-black">
-                        {record.sr}
-                      </td>
-                      <td className="py-2 px-4 border text-black">
-                        {record.scan_code}
-                      </td>
-                    </tr>
-                  ))}
+                  {missingExcelRecords.length > 0 &&
+                    missingExcelRecords.map((record, index) => (
+                      <tr key={index} className="border-t">
+                        <td className="py-2 px-4 border text-black">
+                          {record.sr}
+                        </td>
+                        <td className="py-2 px-4 border text-black">
+                          {record.scan_code}
+                        </td>
+                        {/* <td className="py-2 px-4 border text-black">
+                          {formatDateToIST(record.created_at)}
+                        </td> */}
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </>
